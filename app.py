@@ -27,6 +27,7 @@ from pricing import (
     price_wo_heston,
     bs_price_vec,
     implied_vol_vec,
+    simulate_wo_paths,
 )
 
 st.set_page_config(page_title="Worst-of Put Pricer", page_icon="📉", layout="wide")
@@ -399,7 +400,8 @@ with st.expander("Implied vol smiles (as fetched)"):
                "impliedVolatility field is never used.")
 
 # ---- charts -----------------------------------------------------------------
-tab1, tab2 = st.tabs(["Worst-of distribution", "Payoff at maturity (client view)"])
+tab1, tab2, tab3 = st.tabs(["Worst-of distribution", "Payoff at maturity (client view)",
+                            "Monte Carlo paths"])
 with tab1:
     fig = go.Figure()
     fig.add_trace(go.Histogram(x=mc["wo_T"][:200000] * 100, nbinsx=90,
@@ -427,6 +429,35 @@ with tab2:
                        xaxis_title="Worst-of performance at T (%)",
                        yaxis_title="P&L (% of notional)", height=420)
     st.plotly_chart(fig2, width="stretch")
+with tab3:
+    t_grid, _, _, wo_paths = simulate_wo_paths(sig1, sig2, corr_used, T, r, q1, q2,
+                                               n_paths=80, n_steps=126, seed=int(seed))
+    ends_itm = wo_paths[-1] < K_pct
+    fig3 = go.Figure()
+    for j in range(wo_paths.shape[1]):
+        itm = bool(ends_itm[j])
+        fig3.add_trace(go.Scatter(
+            x=t_grid, y=wo_paths[:, j] * 100, mode="lines",
+            line=dict(color="#E45756" if itm else "#4C78A8", width=1),
+            opacity=0.45, showlegend=False, hoverinfo="skip"))
+    # legend proxies
+    fig3.add_trace(go.Scatter(x=[None], y=[None], mode="lines",
+                              line=dict(color="#E45756"), name="ends below strike (exercised)"))
+    fig3.add_trace(go.Scatter(x=[None], y=[None], mode="lines",
+                              line=dict(color="#4C78A8"), name="ends above strike"))
+    fig3.add_hline(y=K_pct * 100, line_dash="dash", line_color="#E45756",
+                   annotation_text=f"Strike {K_pct:.0%}")
+    fig3.add_hline(y=100, line_dash="dot", line_color="#54A24B", annotation_text="Spot")
+    fig3.update_layout(
+        title=f"80 simulated worst-of paths — {ends_itm.mean():.0%} of this sample exercised",
+        xaxis_title="Time (years)", yaxis_title="min(S₁ₜ/S₁₀, S₂ₜ/S₂₀) (% of spot)",
+        height=460, legend=dict(orientation="h"))
+    st.plotly_chart(fig3, width="stretch")
+    st.caption("Correlated GBM sample paths of the worst performer, same vols/correlation "
+               "as the pricer — for intuition only. The payoff is European, so the pricing "
+               "Monte Carlo draws the terminal distribution exactly (100k–1M draws, no "
+               "time-stepping and no discretization error); these 80 paths are just a "
+               "visual sample of the same dynamics.")
 
 # ---- optional Heston comparison ---------------------------------------------
 if run_heston:
