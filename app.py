@@ -296,11 +296,33 @@ for tkr in (t1, t2):
 
 # ---- pricing inputs ---------------------------------------------------------
 st.subheader("Pricing inputs")
+
+
+def vol_control(col, tkr, seed_pct):
+    """Slider + exact-entry box kept in sync. Re-seeds from the smile whenever
+    the market read (strike/tenor/ticker) changes; user edits stick otherwise."""
+    sl_key, num_key, seed_key = f"vol_sl_{tkr}", f"vol_num_{tkr}", f"vol_seed_{tkr}"
+    if st.session_state.get(seed_key) != seed_pct:
+        st.session_state[seed_key] = seed_pct
+        st.session_state[sl_key] = seed_pct
+        st.session_state[num_key] = seed_pct
+
+    def _from_slider():
+        st.session_state[num_key] = st.session_state[sl_key]
+
+    def _from_box():
+        st.session_state[sl_key] = st.session_state[num_key]
+
+    col.slider(f"{tkr} vol used (%)", min_value=1.0, max_value=300.0, step=0.1,
+               key=sl_key, on_change=_from_slider)
+    col.number_input(f"{tkr} vol — exact value (%)", min_value=1.0, max_value=300.0,
+                     step=0.1, format="%.2f", key=num_key, on_change=_from_box)
+    return float(st.session_state[num_key]) / 100.0
+
+
 ic1, ic2, ic3 = st.columns(3)
-sig1 = ic1.number_input(f"{t1} vol used (%)", value=round(iv_strike[t1] * 100, 1),
-                        min_value=1.0, max_value=300.0, step=0.5) / 100.0
-sig2 = ic2.number_input(f"{t2} vol used (%)", value=round(iv_strike[t2] * 100, 1),
-                        min_value=1.0, max_value=300.0, step=0.5) / 100.0
+sig1 = vol_control(ic1, t1, round(iv_strike[t1] * 100, 1))
+sig2 = vol_control(ic2, t2, round(iv_strike[t2] * 100, 1))
 corr_used = ic3.slider("Correlation used", -0.95, 0.99,
                        round(float(np.clip(corr_real, -0.95, 0.99)), 2), 0.01)
 st.caption(
