@@ -160,3 +160,28 @@ def implied_vol_vec(mids, S, Ks, T, r, q, is_put):
         hi = np.where(too_low, hi, mid_sig)
     iv = 0.5 * (lo + hi)
     return iv, ok & (iv > 0.02) & (iv < 3.5)
+
+
+# ============================================================================
+# PATH SIMULATION — for charts only; pricing uses the exact terminal draw
+# ============================================================================
+
+def simulate_wo_paths(sig1, sig2, corr, T, r, q1, q2,
+                      n_paths=80, n_steps=126, seed=42):
+    """Correlated GBM sample paths in performance space. Lognormal increments
+    are exact for GBM, so each grid point is drawn from the true distribution.
+    Returns (t_grid, X1, X2, worst_of) with shape (n_steps+1, n_paths)."""
+    rng = np.random.default_rng(seed)
+    dt_ = T / n_steps
+    Z = rng.standard_normal((n_steps, n_paths, 2))
+    e1 = Z[..., 0]
+    e2 = corr * Z[..., 0] + np.sqrt(max(1.0 - corr ** 2, 0.0)) * Z[..., 1]
+    X1 = np.exp(np.cumsum((r - q1 - 0.5 * sig1 ** 2) * dt_
+                          + sig1 * np.sqrt(dt_) * e1, axis=0))
+    X2 = np.exp(np.cumsum((r - q2 - 0.5 * sig2 ** 2) * dt_
+                          + sig2 * np.sqrt(dt_) * e2, axis=0))
+    ones = np.ones((1, n_paths))
+    X1 = np.vstack([ones, X1])
+    X2 = np.vstack([ones, X2])
+    t_grid = np.linspace(0.0, T, n_steps + 1)
+    return t_grid, X1, X2, np.minimum(X1, X2)
